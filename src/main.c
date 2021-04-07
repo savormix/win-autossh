@@ -1,11 +1,25 @@
 #include "main.h"
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "EndlessLoop"
 int _tmain(int argc, _TCHAR *argv[]) {
+    const _TCHAR *executionIntervalStr = _T("60000");
     const _TCHAR *targetExecutable = _T("ssh");
     int cmdLineCount = 0;
     const _TCHAR** cmdLine = NULL;
     BOOL cmdLinePending = FALSE;
     for (int i = 0; i < argc; ++i) {
+        if (!_tcscmp(EXECUTION_INTERVAL_ARG, argv[i])) {
+            if (cmdLinePending) {
+                cmdLinePending = FALSE;
+                cmdLineCount -= argc - i;
+            }
+            if (i + 1 >= argc) {
+                break;
+            }
+            executionIntervalStr = argv[i + 1];
+            continue;
+        }
         if (!_tcscmp(EXECUTABLE_INDICATOR_ARG, argv[i])) {
             if (cmdLinePending) {
                 cmdLinePending = FALSE;
@@ -27,6 +41,14 @@ int _tmain(int argc, _TCHAR *argv[]) {
             continue;
         }
     }
+
+    _TCHAR *executionIntervalEnd = NULL;
+    DWORD executionInterval = _tcstoul(executionIntervalStr, &executionIntervalEnd, 10);
+    if (executionIntervalEnd - executionIntervalStr != _tcslen(executionIntervalStr)) {
+        _tprintf(_T("Invalid execution interval: '%s'\n"), executionIntervalStr);
+        return 1;
+    }
+    // _tprintf(_T("Execution interval (ms): %d\n"), executionInterval);
 
     size_t cmdLineLength = 3 + _tcslen(targetExecutable);
     for (int i = 0; i < cmdLineCount; ++i) {
@@ -51,22 +73,38 @@ int _tmain(int argc, _TCHAR *argv[]) {
     while (TRUE) {
         ZeroMemory(&startupInfo, sizeof(startupInfo));
         startupInfo.cb = sizeof(startupInfo);
+        /*
+        startupInfo.dwFlags = STARTF_USESTDHANDLES;
+        startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+        startupInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+         */
         ZeroMemory(&processInfo, sizeof(processInfo));
 
-        if (!CreateProcess(NULL, cmdLineString, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &startupInfo,
+        ULONGLONG sshStartTime = GetTickCount64();
+        if (!CreateProcess(NULL, cmdLineString, NULL, NULL, /*TRUE*/FALSE, CREATE_NO_WINDOW, NULL, NULL, &startupInfo,
                 &processInfo)) {
             const DWORD errorCode = GetLastError();
             _TCHAR* errorDesc = NULL;
             FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                     NULL, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) &errorDesc, 0, NULL);
             _tprintf(_T("[%d] %s"), errorCode, errorDesc);
-            Sleep(1000);
+            if (LocalFree(errorDesc)) {
+                _tprintf(_T("Memory leak!\n"));
+            }
+            Sleep(executionInterval);
         }
 
+        // _tprintf(_T("Started\n"));
         WaitForSingleObject(processInfo.hProcess, INFINITE);
+        // _tprintf(_T("Stopped\n"));
+        ULONGLONG elapsedMillis = GetTickCount64() - sshStartTime;
+        if (elapsedMillis < executionInterval) {
+            Sleep(executionInterval - elapsedMillis);
+        }
 
         CloseHandle(processInfo.hProcess);
         CloseHandle(processInfo.hThread);
     }
-    return 0;
+    // return 0;
 }
+#pragma clang diagnostic pop

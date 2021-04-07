@@ -7,5 +7,6 @@
 #include <Windows.h>
 #include "version.h"
 
+#define EXECUTION_INTERVAL_ARG _T("--interval")
 #define EXECUTABLE_INDICATOR_ARG _T("--target")
 #define CMDLINE_INDICATOR_ARG _T("--args")
